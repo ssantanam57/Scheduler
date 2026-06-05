@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimizador de Horarios — Uniandes</title>
+<style>
+/* ── Reset & variables ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #f1f3f4;
+  --surface:  #ffffff;
+  --border:   #dadce0;
+  --primary:  #1a73e8;
+  --primary-dark: #1557b0;
+  --danger:   #d93025;
+  --text:     #202124;
+  --muted:    #5f6368;
+  --radius:   10px;
+  --shadow:   0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+  --course-colors: #4285f4,#ea4335,#34a853,#fbbc04,#ff6d00,#46bdc6,#7b1fa2,#e91e63;
+}
+body { font-family: 'Google Sans', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── Layout ──────────────────────────────────────────────── */
+header {
+  background: var(--primary);
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  position: sticky; top: 0; z-index: 100;
+}
+header h1 { font-size: 1.15rem; font-weight: 600; }
+header span { font-size: .85rem; opacity: .8; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 52px);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  max-height: calc(100vh - 52px);
+  position: sticky; top: 52px;
+}
+
+.section-label {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 8px;
+}
+
+select, input[type=text], input[type=number] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .9rem;
+  color: var(--text);
+  background: #fff;
+  outline: none;
+  transition: border-color .2s;
+}
+select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(26,115,232,.15); }
+
+.search-row { display: flex; gap: 8px; }
+.search-row input { flex: 1; }
+button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: .88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+button:disabled { opacity: .5; cursor: default; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+.btn-ghost { background: transparent; color: var(--primary); border: 1px solid var(--border); }
+.btn-ghost:hover { background: #f1f6fe; }
+.btn-danger { background: #fce8e6; color: var(--danger); border: none; padding: 4px 8px; font-size: .8rem; }
+
+/* ── Course cards ────────────────────────────────────────── */
+.course-list { display: flex; flex-direction: column; gap: 10px; }
+.course-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.course-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  background: #fafafa;
+}
+.course-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.course-card-header .name { flex: 1; font-weight: 500; font-size: .88rem; }
+.course-card-header .count { font-size: .78rem; color: var(--muted); }
+.course-card-body {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  display: none;
+}
+.course-card.open .course-card-body { display: block; }
+.course-card-body .section-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.section-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: .82rem;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.section-item:last-child { border-bottom: none; }
+.section-item input[type=checkbox] { margin-top: 2px; flex-shrink: 0; accent-color: var(--primary); }
+.section-info { flex: 1; }
+.section-num { font-weight: 600; }
+.section-comp-badge {
+  font-size: .72rem;
+  background: #e8f0fe;
+  color: var(--primary);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 500;
+}
+.section-detail { color: var(--muted); margin-top: 1px; }
+.sel-all-row { display: flex; gap: 6px; margin-bottom: 6px; }
+
+/* ── Optimize panel ──────────────────────────────────────── */
+.optimize-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.rank-row { display: flex; gap: 8px; align-items: center; }
+.rank-row label { font-size: .85rem; white-space: nowrap; color: var(--muted); }
+.btn-optimize {
+  padding: 10px 16px;
+  font-size: .95rem;
+  border-radius: 8px;
+}
+
+/* ── Main content ────────────────────────────────────────── */
+.main {
+  padding: 24px;
+  overflow-y: auto;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--muted);
+  text-align: center;
+  gap: 12px;
+}
+.empty-state .icon { font-size: 3rem; }
+.empty-state p { font-size: 1rem; max-width: 320px; }
+
+.results-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.results-header h2 { font-size: 1rem; font-weight: 600; }
+.badge {
+  background: #e8f0fe;
+  color: var(--primary);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+/* ── Combination card ────────────────────────────────────── */
+.combo-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.combo-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.rank-badge {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-weight: 700;
+  font-size: .85rem;
+}
+.combo-score { color: var(--muted); font-size: .82rem; }
+.combo-body { padding: 16px 18px; }
+
+/* ── Section table ───────────────────────────────────────── */
+.section-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: 20px; }
+.section-table th { text-align: left; padding: 6px 8px; color: var(--muted); font-weight: 600; font-size: .78rem; border-bottom: 2px solid var(--border); }
+.section-table td { padding: 7px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+.section-table tr:last-child td { border-bottom: none; }
+.course-color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+
+/* ── Visual timetable ────────────────────────────────────── */
+.timetable-wrap { overflow-x: auto; }
+.timetable {
+  display: grid;
+  grid-template-columns: 46px repeat(6, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 500px;
+  font-size: .75rem;
+}
+.tt-header {
+  background: #f8f9fa;
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: .75rem;
+}
+.tt-time-label {
+  color: var(--muted);
+  text-align: right;
+  padding: 0 6px;
+  font-size: .7rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-right: 1px solid var(--border);
+}
+.tt-cell {
+  position: relative;
+  border-left: 1px solid #efefef;
+  min-height: 18px;
+}
+.tt-cell.half-hour { border-bottom: 1px solid #efefef; }
+.tt-cell.full-hour { border-bottom: 1px solid var(--border); }
+.tt-block {
+  position: absolute;
+  left: 1px; right: 1px;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  z-index: 2;
+}
+
+/* ── Loading / error ─────────────────────────────────────── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  background: #323232;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: .88rem;
+  box-shadow: var(--shadow);
+  z-index: 999;
+  animation: fadeInUp .2s;
+}
+.toast.error { background: var(--danger); }
+@keyframes fadeInUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: none; } }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { max-height: none; position: relative; top: 0; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.4rem">🗓</span>
+  <div>
+    <h1>Optimizador de Horarios</h1>
+    <span>Universidad de los Andes</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Term selector -->
+    <div>
+      <div class="section-label">Período académico</div>
+      <select id="termSelect" onchange="onTermChange()">
+        <option value="">Cargando…</option>
+      </select>
+    </div>
+
+    <!-- Course search -->
+    <div>
+      <div class="section-label">Agregar curso</div>
+      <div class="search-row">
+        <input id="searchInput" type="text" placeholder="ISIS-1221, MATE…"
+               onkeydown="if(event.key==='Enter') addCourse()">
+        <button class="btn-primary" id="addBtn" onclick="addCourse()">+</button>
+      </div>
+      <div id="searchStatus" style="font-size:.78rem;color:var(--muted);margin-top:5px;min-height:16px;"></div>
+    </div>
+
+    <!-- Course list -->
+    <div>
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Cursos seleccionados</span>
+        <button class="btn-ghost" style="font-size:.75rem;padding:3px 8px" onclick="clearAll()">Limpiar</button>
+      </div>
+      <div class="course-list" id="courseList">
+        <p style="font-size:.83rem;color:var(--muted);text-align:center;padding:12px 0">
+          Ningún curso agregado aún.
+        </p>
+      </div>
+    </div>
+
+    <!-- Optimize controls -->
+    <div class="optimize-panel">
+      <div class="section-label">Optimizar</div>
+      <div class="rank-row">
+        <label for="rankSelect">Criterio</label>
+        <select id="rankSelect" style="flex:1">
+          <option value="free-days">Maximizar días libres</option>
+          <option value="min-gaps">Minimizar brechas</option>
+          <option value="no-early">Evitar madrugadas</option>
+          <option value="balanced">Equilibrado</option>
+        </select>
+      </div>
+      <div class="rank-row">
+        <label for="topN">Mostrar</label>
+        <select id="topN" style="flex:1">
+          <option value="3">3 opciones</option>
+          <option value="5" selected>5 opciones</option>
+          <option value="10">10 opciones</option>
+          <option value="20">20 opciones</option>
+        </select>
+      </div>
+      <button class="btn-primary btn-optimize" id="optimizeBtn" onclick="optimize()" disabled>
+        Optimizar horario
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN CONTENT ────────────────────────────────────── -->
+  <main class="main" id="main">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">📚</div>
+      <p>Agrega los cursos que quieres inscribir y presiona <strong>Optimizar horario</strong>.</p>
+    </div>
+    <div id="resultsArea" style="display:none"></div>
+  </main>
+
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const COLORS = ['#4285f4','#ea4335','#34a853','#f9ab00','#ff6d00','#00bcd4','#9c27b0','#e91e63'];
+const DAYS   = ['l','m','i','j','v','s'];
+const DAY_LABELS = ['Lun','Mar','Mié','Jue','Vie','Sáb'];
+const START_H = 6, END_H = 21;
+
+// courses: [{code, title, color, options:[sectionDict], enabled:[bool]}]
+let courses = [];
+let currentTerm = '';
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const terms = await apiFetch('/api/terms');
+    const sel = document.getElementById('termSelect');
+    sel.innerHTML = terms.map(t =>
+      `<option value="${t.term_desc}">${t.term_desc} — ${t.term_name}</option>`
+    ).join('');
+    // Default to 202620 (Segundo Semestre) if available
+    const preferred = terms.find(t => t.term_desc === '202620');
+    if (preferred) sel.value = '202620';
+    currentTerm = sel.value;
+  } catch(e) {
+    showToast('Error al cargar períodos: ' + e.message, true);
+  }
+}
+
+function onTermChange() {
+  currentTerm = document.getElementById('termSelect').value;
+  courses = [];
+  renderCourseList();
+  clearResults();
+}
+
+// ── Course management ────────────────────────────────────────────────────────
+async function addCourse() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+
+  const btn = document.getElementById('addBtn');
+  const status = document.getElementById('searchStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  status.textContent = 'Buscando…';
+
+  try {
+    const results = await apiFetch(`/api/search?q=${encodeURIComponent(q)}&term=${currentTerm}`);
+
+    if (!results.length) {
+      status.textContent = `Sin resultados para "${q}".`;
+      return;
+    }
+
+    // If multiple courses match, add each one
+    for (const bundle of results) {
+      if (courses.find(c => c.code === bundle.code)) {
+        status.textContent = `${bundle.code} ya está en la lista.`;
+        continue;
+      }
+      const color = COLORS[courses.length % COLORS.length];
+      courses.push({
+        code:    bundle.code,
+        title:   bundle.title,
+        color,
+        options: bundle.options,
+        // All options enabled by default
+        enabled: bundle.options.map(() => true),
+      });
+    }
+
+    if (results.length === 1) {
+      status.textContent = `✓ ${results[0].options.length} opción(es) en ${results[0].code}`;
+    } else {
+      status.textContent = `✓ ${results.length} curso(s) agregados.`;
+    }
+    document.getElementById('searchInput').value = '';
+    renderCourseList();
+    updateOptimizeBtn();
+
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '+';
+  }
+}
+
+function removeCourse(code) {
+  courses = courses.filter(c => c.code !== code);
+  renderCourseList();
+  updateOptimizeBtn();
+  clearResults();
+}
+
+function clearAll() {
+  courses = [];
+  renderCourseList();
+  updateOptimizeBtn();
+  clearResults();
+}
+
+function toggleOption(courseIdx, optIdx) {
+  courses[courseIdx].enabled[optIdx] = !courses[courseIdx].enabled[optIdx];
+  updateOptimizeBtn();
+}
+
+function selectAllOptions(courseIdx, all) {
+  courses[courseIdx].enabled = courses[courseIdx].enabled.map(() => all);
+  renderCourseList();
+  updateOptimizeBtn();
+}
+
+function updateOptimizeBtn() {
+  const ready = courses.length >= 1 && courses.every(c => c.enabled.some(Boolean));
+  document.getElementById('optimizeBtn').disabled = !ready;
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+function fmtSchedule(timeBlocks) {
+  if (!timeBlocks || !timeBlocks.length) return 'Sin horario';
+  const map = {};
+  for (const b of timeBlocks) {
+    const k = `${b.start}-${b.end}`;
+    if (!map[k]) map[k] = {start:b.start, end:b.end, days:[]};
+    const dn = {l:'Lun',m:'Mar',i:'Mié',j:'Jue',v:'Vie',s:'Sáb',d:'Dom'};
+    map[k].days.push(dn[b.day] || b.day);
+  }
+  return Object.values(map)
+    .sort((a,b) => a.start - b.start)
+    .map(e => {
+      const s = String(e.start).padStart(4,'0');
+      const en = String(e.end).padStart(4,'0');
+      return `${e.days.join('/')} ${s.slice(0,2)}:${s.slice(2)}-${en.slice(0,2)}:${en.slice(2)}`;
+    }).join('  ');
+}
+
+function renderCourseList() {
+  const el = document.getElementById('courseList');
+  if (!courses.length) {
+    el.innerHTML = '<p style="font-size:.83rem;color:var(--muted);text-align:center;padding:12px 0">Ningún curso agregado aún.</p>';
+    return;
+  }
+
+  el.innerHTML = courses.map((course, ci) => {
+    const enabledCount = course.enabled.filter(Boolean).length;
+    const optHtml = course.options.map((opt, oi) => {
+      const isComp = opt.section_num.includes('+');
+      const sched = fmtSchedule(opt.time_blocks);
+      const checked = course.enabled[oi] ? 'checked' : '';
+      return `
+        <li class="section-item">
+          <input type="checkbox" ${checked} onchange="toggleOption(${ci},${oi})">
+          <div class="section-info">
+            <span class="section-num">Sec. ${opt.section_num}</span>
+            ${isComp ? '<span class="section-comp-badge">+comp</span>' : ''}
+            <div class="section-detail">${sched}</div>
+            ${opt.professor ? `<div class="section-detail">${opt.professor}</div>` : ''}
+          </div>
+          <span style="font-size:.78rem;color:var(--muted);white-space:nowrap">${opt.seats_avail} cupos</span>
+        </li>`;
+    }).join('');
+
+    return `
+      <div class="course-card" id="card-${ci}">
+        <div class="course-card-header" onclick="toggleCard(${ci})">
+          <div class="course-dot" style="background:${course.color}"></div>
+          <span class="name">${course.code}</span>
+          <span class="count">${enabledCount}/${course.options.length}</span>
+          <button class="btn-danger" onclick="event.stopPropagation();removeCourse('${course.code}')">✕</button>
+        </div>
+        <div class="course-card-body">
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:6px">${course.title}</p>
+          <div class="sel-all-row">
+            <button class="btn-ghost" style="font-size:.75rem;padding:3px 8px" onclick="selectAllOptions(${ci},true)">Todas</button>
+            <button class="btn-ghost" style="font-size:.75rem;padding:3px 8px" onclick="selectAllOptions(${ci},false)">Ninguna</button>
+          </div>
+          <ul class="section-list">${optHtml}</ul>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleCard(ci) {
+  const card = document.getElementById(`card-${ci}`);
+  card.classList.toggle('open');
+}
+
+// ── Optimize ─────────────────────────────────────────────────────────────────
+async function optimize() {
+  const btn = document.getElementById('optimizeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="border-color:#fff;border-top-color:transparent"></span> Optimizando…';
+
+  // Build course_groups: label -> [section dicts of enabled options]
+  const courseGroups = {};
+  for (const course of courses) {
+    const selected = course.options.filter((_, i) => course.enabled[i]);
+    if (!selected.length) continue;
+    courseGroups[`${course.code} — ${course.title}`] = selected;
+  }
+
+  const criterion = document.getElementById('rankSelect').value;
+  const topN = parseInt(document.getElementById('topN').value);
+
+  try {
+    const resp = await apiFetch('/api/optimize', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ course_groups: courseGroups, criterion, top_n: topN }),
+    });
+
+    if (resp.total === 0) {
+      showResults(null, 0, criterion);
+    } else {
+      showResults(resp.combinations, resp.total, criterion);
+    }
+  } catch(e) {
+    showToast('Error al optimizar: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Optimizar horario';
+    updateOptimizeBtn();
+  }
+}
+
+// ── Results rendering ─────────────────────────────────────────────────────────
+function clearResults() {
+  document.getElementById('emptyState').style.display = '';
+  document.getElementById('resultsArea').style.display = 'none';
+}
+
+function showResults(combos, total, criterion) {
+  document.getElementById('emptyState').style.display = 'none';
+  const area = document.getElementById('resultsArea');
+  area.style.display = '';
+
+  if (!combos || combos.length === 0) {
+    area.innerHTML = `
+      <div class="empty-state" style="height:auto;padding:40px 0">
+        <div class="icon">😕</div>
+        <p>No hay combinaciones válidas. Todos los horarios se cruzan entre sí.</p>
+      </div>`;
+    return;
+  }
+
+  // Build a code→color map from current courses
+  const colorMap = {};
+  for (const c of courses) colorMap[c.code] = c.color;
+
+  const criterionLabels = {
+    'free-days': 'días libres',
+    'min-gaps': 'mínimas brechas',
+    'no-early': 'sin madrugadas',
+    'balanced': 'equilibrado',
+  };
+
+  area.innerHTML = `
+    <div class="results-header">
+      <h2>Resultados</h2>
+      <span class="badge">${total} combinación(es) válida(s)</span>
+      <span style="font-size:.82rem;color:var(--muted)">Criterio: ${criterionLabels[criterion] || criterion}</span>
+    </div>
+    ${combos.map(c => renderCombo(c, colorMap)).join('')}`;
+}
+
+function renderCombo(combo, colorMap) {
+  // Table of sections
+  const tableRows = combo.sections.map(sec => {
+    const code = `${sec.prefix}-${sec.course_num}`;
+    const color = colorMap[code] || '#888';
+    const sched = fmtSchedule(sec.time_blocks);
+    return `<tr>
+      <td><span class="course-color-dot" style="background:${color}"></span>${sec.nrc}</td>
+      <td><strong>${code}</strong> sec.${sec.section_num}<br>
+          <span style="font-size:.78rem;color:var(--muted)">${sec.title}</span></td>
+      <td>${sched}</td>
+      <td>${sec.professor || '—'}</td>
+      <td style="text-align:right">${sec.seats_avail}</td>
+    </tr>`;
+  }).join('');
+
+  const scoreLabel = combo.score !== undefined ? `score ${combo.score.toFixed(3)}` : '';
+
+  return `
+    <div class="combo-card">
+      <div class="combo-header">
+        <span class="rank-badge">#${combo.rank}</span>
+        <span class="combo-score">${scoreLabel}</span>
+      </div>
+      <div class="combo-body">
+        <table class="section-table">
+          <thead><tr><th>NRC</th><th>Curso</th><th>Horario</th><th>Profesor</th><th>Cupos</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+        <div class="timetable-wrap">
+          ${buildTimetable(combo.sections, colorMap)}
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildTimetable(sections, colorMap) {
+  const SLOTS = (END_H - START_H) * 2; // 30-min slots
+
+  // grid[day][slot] = {color, label, rowStart, rowSpan} | null
+  const grid = {};
+  for (const d of DAYS) grid[d] = new Array(SLOTS).fill(null);
+
+  for (const sec of sections) {
+    const code = `${sec.prefix}-${sec.course_num}`;
+    const color = colorMap[code] || '#888';
+    const shortLabel = `${code} ${sec.section_num}`;
+
+    for (const b of sec.time_blocks) {
+      const sMin = Math.floor(b.start / 100) * 60 + (b.start % 100);
+      const eMin = Math.floor(b.end   / 100) * 60 + (b.end   % 100);
+      // Precise float positions for pixel-perfect block sizing
+      const sSlotF = (sMin - START_H * 60) / 30;
+      const eSlotF = (eMin - START_H * 60) / 30;
+      // Integer slot range for grid array (fill every touched slot)
+      const sSlotI = Math.floor(sSlotF);
+      const eSlotI = Math.ceil(eSlotF);
+      if (!DAYS.includes(b.day)) continue;
+      for (let s = Math.max(0, sSlotI); s < Math.min(SLOTS, eSlotI); s++) {
+        grid[b.day][s] = { color, label: shortLabel, sSlotF, eSlotF };
+      }
+    }
+  }
+
+  const SLOT_H = 20; // px per 30-min slot
+  const totalH = SLOTS * SLOT_H;
+
+  // Build absolute-positioned blocks per day
+  let dayCols = '';
+  for (let di = 0; di < DAYS.length; di++) {
+    const d = DAYS[di];
+    const blocks = [];
+    let si = 0;
+    while (si < SLOTS) {
+      if (grid[d][si]) {
+        const { color, label, sSlotF, eSlotF } = grid[d][si];
+        const top = Math.max(0, sSlotF) * SLOT_H;
+        const h   = Math.max(4, (Math.min(SLOTS, eSlotF) - Math.max(0, sSlotF)) * SLOT_H - 2);
+        blocks.push(`<div class="tt-block" style="top:${top}px;height:${h}px;background:${color}">${label}</div>`);
+        // Advance to first integer slot AFTER the block ends
+        si = Math.ceil(eSlotF);
+      } else si++;
+    }
+    dayCols += `<div style="position:relative;border-left:1px solid #e8eaed;height:${totalH}px">
+      ${blocks.join('')}
+    </div>`;
+  }
+
+  // Time labels column (show every whole hour)
+  let timeLabels = '';
+  for (let s = 0; s < SLOTS; s++) {
+    const min = START_H * 60 + s * 30;
+    const hh = String(Math.floor(min/60)).padStart(2,'0');
+    const mm = String(min%60).padStart(2,'0');
+    const isHour = mm === '00';
+    const border = isHour ? 'border-top:1px solid var(--border)' : 'border-top:1px dashed #e8eaed';
+    const label  = isHour ? `${hh}:00` : '';
+    timeLabels += `<div style="height:${SLOT_H}px;${border};font-size:.68rem;color:var(--muted);text-align:right;padding-right:5px;line-height:${SLOT_H}px">${label}</div>`;
+  }
+
+  return `
+    <div style="display:grid;grid-template-columns:40px repeat(${DAYS.length},1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden;min-width:480px">
+      <div style="background:#f8f9fa;border-right:1px solid var(--border)"></div>
+      ${DAY_LABELS.map(l => `<div style="background:#f8f9fa;text-align:center;padding:5px 2px;font-size:.75rem;font-weight:600;color:var(--muted);border-left:1px solid var(--border)">${l}</div>`).join('')}
+      <div>${timeLabels}</div>
+      ${dayCols}
+    </div>`;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+async function apiFetch(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+function showToast(msg, isError) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
